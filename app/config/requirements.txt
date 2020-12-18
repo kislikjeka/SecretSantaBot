@@ -1,0 +1,5 @@
+asyncpg
+aioredis
+aiogram
+python-dotenv
+gino

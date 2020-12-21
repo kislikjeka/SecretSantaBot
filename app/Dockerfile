@@ -1,4 +1,6 @@
 FROM python:3.8
-COPY . .
+WORKDIR /app
+COPY ./config/requirements.txt ./config/requirements.txt
 RUN pip install -r ./config/requirements.txt
-CMD ["python", "./bot.py"]
+COPY . .
+CMD ["python", "bot.py"]

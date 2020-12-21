@@ -7,16 +7,13 @@ from sqlalchemy import (
     BigInteger,
     String,
     Sequence,
-    TIMESTAMP,
     Boolean,
     JSON,
-    DATETIME,
+    DateTime,
     ForeignKey,
     TEXT,
 )
 from sqlalchemy import sql
-
-from ..config.config import db_pass, db_user, host
 
 db = Gino()
 
@@ -25,12 +22,11 @@ class User(db.Model):
     __tablename__ = "users"
     query: sql.Select
 
-    id = Column(Integer, Sequence(user_id_seq), primary_key=True)
-    user_id = Column(BigInteger)
+    id = Column(BigInteger, primary_key=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     nickname = Column(String(100), nullable=False)
-    created_at = Column(TIMESTAMP, nullable=False)
+    created_at = Column(DateTime(), server_default=sql.func.now())
 
     def __repr__(self):
         return "<User(id='{}', fullname='{}', username='{}')>".format(
@@ -38,14 +34,25 @@ class User(db.Model):
         )
 
 
+PROFILE_ID = Sequence("profiles_id_seq", start=1, increment=1)
+
+
 class Profile(db.Model):
     __tablename__ = "profiles"
     query: sql.Select
 
-    id = Column(Integer, Sequence(profile_id_seq), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    id = Column(
+        Integer,
+        PROFILE_ID,
+        primary_key=True,
+        server_default=PROFILE_ID.next_value(),
+        autoincrement=True,
+    )
+    user_id = Column(BigInteger, ForeignKey("users.id"))
     wishlist = Column(TEXT)
-    invalid_id = Column(Integer, ForeignKey("users.id"))
+    unwishlist = Column(TEXT)
+    invalid_username = Column(String(100))
+    created_at = Column(DateTime(), server_default=sql.func.now())
     _invalid: User = None
 
     @property
@@ -57,14 +64,26 @@ class Profile(db.Model):
         self._invalid = value
 
 
+GROUP_ID = Sequence("groups_id_seq", start=1, increment=1)
+
+
 class Group(db.Model):
     __tablename__ = "groups"
     query: sql.Select
 
-    id = Column(Integer, Sequence(group_id_seq), primary_key=True)
+    id = Column(
+        Integer,
+        GROUP_ID,
+        primary_key=True,
+        server_default=GROUP_ID.next_value(),
+        autoincrement=True,
+    )
     name = Column(String(100), nullable=False)
-    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(TIMESTAMP, nullable=False)
+    description = Column(TEXT)
+    link = Column(String(10), nullable=False)
+    admin_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(), server_default=sql.func.now())
+    is_finished = Column(Boolean, default=False)
     _admin: User = None
 
     @property
@@ -75,16 +94,45 @@ class Group(db.Model):
     def admin(self, value):
         self._admin = value
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "description": self.description,
+            "link": self.link,
+            "admin_id": self.admin_id,
+            "created_at": self.created_at,
+            "is_finished": self.is_finished,
+        }
+
+    def from_dict(self, d: dict):
+        self.name = d.get("name")
+        self.description = d.get("description")
+        self.link = d.get("link")
+        self.admin_id = d.get("admin_id")
+        self.created_at = d.get("created_at")
+        self.is_finished = d.get("is_finished")
+
+        return self
+
+
+PAIR_ID = Sequence("pairs_id_seq", start=1, increment=1)
+
 
 class Pair(db.Model):
     __tablename__ = "pairs"
     query: sql.Select
 
-    id = Column(Integer, Sequence(pairs_id_seq), primary_key=True)
-    giver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reciever_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    id = Column(
+        Integer,
+        PAIR_ID,
+        primary_key=True,
+        server_default=PAIR_ID.next_value(),
+        autoincrement=True,
+    )
+    giver_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    reciever_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
-    created_at = Column(TIMESTAMP, nullable=False)
+    created_at = Column(DateTime(), server_default=sql.func.now())
     _group: Group = None
     _giver: User = None
     _reciever: User = None
@@ -112,3 +160,11 @@ class Pair(db.Model):
     @reciever.setter
     def reciever(self, value: User):
         self._reciever = value
+
+
+async def create_db(db_user: String, db_pass: String, host: String):
+    await db.set_bind(f"postgresql://{db_user}:{db_pass}@{host}/gino")
+
+    # Create tables - выполняем один раз при первом запуске
+    db.gino: GinoSchemaVisitor
+    # await db.gino.create_all()
